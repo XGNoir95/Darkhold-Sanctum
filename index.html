@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#080505" />
+    <meta name="description" content="An interactive Three.js temple guarding the Darkhold." />
+    <title>The Darkhold Sanctum</title>
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;500;600&family=Inter:wght@300;400;500&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <canvas id="scene" aria-label="Interactive 3D Darkhold temple"></canvas>
+
+    <div id="webgl-error" class="webgl-error" hidden>
+      <p>Your browser could not start WebGL.</p>
+      <small>Enable hardware acceleration or open this project in a current desktop browser.</small>
+    </div>
+
+    <header id="hud" class="hud is-hidden">
+      <div class="brand">
+        <span class="brand__mark" aria-hidden="true"></span>
+        <div><small>Restricted relic</small><strong>The Darkhold</strong></div>
+      </div>
+      <button id="help-button" class="icon-button" type="button" aria-expanded="false" aria-controls="help-panel">Controls <kbd>H</kbd></button>
+    </header>
+
+    <aside id="objective" class="objective is-hidden" aria-live="polite">
+      <span>Ritual directive</span>
+      <strong id="objective-text">Approach the forbidden book</strong>
+      <div class="objective__line"><i id="progress-line"></i></div>
+    </aside>
+
+    <div id="interaction-prompt" class="interaction-prompt is-hidden" aria-live="polite">
+      <span class="mouse-icon" aria-hidden="true"></span>
+      <div><strong id="prompt-title">Open the Darkhold</strong><small id="prompt-detail">Click the book</small></div>
+    </div>
+
+    <aside id="help-panel" class="help-panel" aria-hidden="true">
+      <div class="help-panel__top">
+        <div><small>Field manual</small><h2>Temple controls</h2></div>
+        <button id="close-help" class="close-button" type="button" aria-label="Close controls">×</button>
+      </div>
+      <div class="control-grid">
+        <div><kbd>A</kbd><kbd>D</kbd><span>Orbit camera</span></div>
+        <div><kbd>W</kbd><kbd>S</kbd><span>Move closer / back</span></div>
+        <div><kbd>Q</kbd><kbd>E</kbd><span>Raise / lower view</span></div>
+        <div><kbd>C</kbd><span>Change cover texture</span></div>
+        <div><kbd>R</kbd><span>Reset camera</span></div>
+        <div><span class="mouse-small"></span><span>Open, close & flip pages</span></div>
+      </div>
+      <div class="rubric">
+        <small>Implemented requirements</small>
+        <p>Custom GLSL shaders · animated lighting · perspective projection · procedural textures · animation · mouse & keyboard interaction</p>
+      </div>
+    </aside>
+
+    <div id="cover-toast" class="toast" aria-live="polite"></div>
+    <div class="vignette" aria-hidden="true"></div>
+    <div class="grain" aria-hidden="true"></div>
+
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>
