@@ -1,20 +1,15 @@
 {
-  "name": "darkhold-temple",
+  "name": "kiras-room-death-note",
   "version": "1.0.0",
   "private": true,
   "type": "module",
-  "description": "Interactive Three.js Darkhold temple for the CSE computer graphics project.",
+  "description": "Interactive Three.js recreation of Light Yagami's room and the Death Note.",
   "scripts": {
     "dev": "vite --host 0.0.0.0",
     "build": "vite build",
     "preview": "vite preview --host 0.0.0.0",
     "test:smoke": "node tests/smoke.mjs"
   },
-  "dependencies": {
-    "three": "0.160.0"
-  },
-  "devDependencies": {
-    "playwright-core": "^1.63.0",
-    "vite": "^8.3.1"
-  }
+  "dependencies": { "three": "0.160.0" },
+  "devDependencies": { "playwright-core": "^1.63.0", "vite": "^8.3.1" }
 }

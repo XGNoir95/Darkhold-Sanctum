@@ -1,331 +1,240 @@
 import * as THREE from 'three';
 
-function seeded(seed = 1) {
-  let value = seed >>> 0;
-  return () => {
-    value = (value * 1664525 + 1013904223) >>> 0;
-    return value / 4294967296;
-  };
-}
-
-function canvasTexture(size, draw, repeat = [1, 1]) {
+const canvasTexture = (width, height, painter, colorSpace = THREE.SRGBColorSpace) => {
   const canvas = document.createElement('canvas');
-  canvas.width = canvas.height = size;
+  canvas.width = width;
+  canvas.height = height;
   const context = canvas.getContext('2d');
-  draw(context, size);
+  painter(context, width, height);
   const texture = new THREE.CanvasTexture(canvas);
-  texture.colorSpace = THREE.SRGBColorSpace;
+  texture.colorSpace = colorSpace;
+  texture.anisotropy = 8;
   texture.wrapS = texture.wrapT = THREE.RepeatWrapping;
-  texture.repeat.set(...repeat);
-  texture.anisotropy = 4;
+  return texture;
+};
+
+const seeded = (seed) => {
+  let state = seed >>> 0;
+  return () => ((state = (state * 1664525 + 1013904223) >>> 0) / 4294967296);
+};
+
+export function makeWoodTexture() {
+  const random = seeded(19);
+  const texture = canvasTexture(768, 768, (ctx, width, height) => {
+    ctx.fillStyle = '#6b482e';
+    ctx.fillRect(0, 0, width, height);
+    for (let plank = 0; plank < 8; plank += 1) {
+      const y = plank * 96;
+      ctx.fillStyle = plank % 2 ? '#765136' : '#69452d';
+      ctx.fillRect(0, y, width, 96);
+      ctx.strokeStyle = 'rgba(28,15,8,.7)';
+      ctx.lineWidth = 3;
+      ctx.strokeRect(-2, y, width + 4, 96);
+      for (let grain = 0; grain < 20; grain += 1) {
+        const gy = y + random() * 92;
+        ctx.beginPath();
+        ctx.moveTo(0, gy);
+        for (let x = 0; x <= width; x += 24) ctx.lineTo(x, gy + Math.sin(x * .035 + random() * 2) * 2.2);
+        ctx.strokeStyle = `rgba(42,22,11,${.04 + random() * .08})`;
+        ctx.lineWidth = 1;
+        ctx.stroke();
+      }
+    }
+  });
+  texture.repeat.set(2.2, 2.6);
   return texture;
 }
 
-function speckle(context, size, count, colors, seed) {
-  const random = seeded(seed);
-  for (let i = 0; i < count; i += 1) {
-    context.fillStyle = colors[Math.floor(random() * colors.length)];
-    const radius = .3 + random() * 2.3;
-    context.globalAlpha = .08 + random() * .28;
-    context.beginPath();
-    context.arc(random() * size, random() * size, radius, 0, Math.PI * 2);
-    context.fill();
-  }
-  context.globalAlpha = 1;
-}
-
-function makeStone() {
-  return canvasTexture(512, (context, size) => {
-    const gradient = context.createLinearGradient(0, 0, size, size);
-    gradient.addColorStop(0, '#746a64');
-    gradient.addColorStop(.5, '#4f4946');
-    gradient.addColorStop(1, '#8b7e74');
-    context.fillStyle = gradient;
-    context.fillRect(0, 0, size, size);
-    const random = seeded(92);
-    for (let i = 0; i < 35; i += 1) {
-      context.strokeStyle = i % 5 === 0 ? '#3b2422' : '#a39184';
-      context.globalAlpha = .12 + random() * .25;
-      context.lineWidth = .6 + random() * 2.5;
-      context.beginPath();
-      let x = random() * size;
-      let y = -10;
-      context.moveTo(x, y);
-      for (let step = 0; step < 8; step += 1) {
-        x += (random() - .48) * 90;
-        y += 75;
-        context.lineTo(x, y);
-      }
-      context.stroke();
-    }
-    speckle(context, size, 1800, ['#241f1d', '#c0aa9b', '#6d3934'], 14);
-  }, [2, 2]);
-}
-
-function makeFloor() {
-  return canvasTexture(512, (context, size) => {
-    const gradient = context.createRadialGradient(size * .45, size * .4, 20, size / 2, size / 2, size * .72);
-    gradient.addColorStop(0, '#504a40');
-    gradient.addColorStop(.55, '#302f2b');
-    gradient.addColorStop(1, '#191d1a');
-    context.fillStyle = gradient;
-    context.fillRect(0, 0, size, size);
-    speckle(context, size, 2600, ['#998d76', '#111512', '#26372d', '#5f2322'], 55);
-
-    const random = seeded(841);
-    for (let crack = 0; crack < 58; crack += 1) {
-      let x = random() * size;
-      let y = random() * size;
-      context.strokeStyle = random() > .82 ? 'rgba(120,22,24,.48)' : 'rgba(9,12,10,.72)';
-      context.lineWidth = .7 + random() * 2.1;
-      context.beginPath();
-      context.moveTo(x, y);
-      for (let step = 0; step < 3 + Math.floor(random() * 6); step += 1) {
-        x += (random() - .5) * 54;
-        y += (random() - .5) * 54;
-        context.lineTo(x, y);
-      }
-      context.stroke();
-    }
-
-    context.save();
-    context.translate(size / 2, size / 2);
-    context.strokeStyle = 'rgba(96,28,27,.34)';
-    context.lineWidth = 3;
-    for (const radius of [75, 132, 205]) {
-      context.beginPath();
-      context.arc(0, 0, radius, 0, Math.PI * 2);
-      context.stroke();
-    }
-    for (let ray = 0; ray < 12; ray += 1) {
-      const angle = ray * Math.PI / 6;
-      context.beginPath();
-      context.moveTo(Math.cos(angle) * 70, Math.sin(angle) * 70);
-      context.lineTo(Math.cos(angle + .16) * 220, Math.sin(angle + .16) * 220);
-      context.stroke();
-    }
-    context.restore();
-  }, [2, 4]);
-}
-
-function makeMetal() {
-  return canvasTexture(256, (context, size) => {
-    const gradient = context.createLinearGradient(0, 0, size, 0);
-    gradient.addColorStop(0, '#0d0b0b');
-    gradient.addColorStop(.27, '#55463e');
-    gradient.addColorStop(.45, '#171313');
-    gradient.addColorStop(.75, '#695047');
-    gradient.addColorStop(1, '#0e0b0b');
-    context.fillStyle = gradient;
-    context.fillRect(0, 0, size, size);
-    const random = seeded(78);
-    for (let i = 0; i < 260; i += 1) {
-      context.fillStyle = random() > .8 ? '#74262a' : '#0b0808';
-      context.globalAlpha = random() * .35;
-      context.fillRect(0, random() * size, size, .3 + random());
-    }
-    context.globalAlpha = 1;
-  }, [2, 2]);
-}
-
-function makeWood() {
-  return canvasTexture(512, (context, size) => {
-    const gradient = context.createLinearGradient(0, 0, size, 0);
-    gradient.addColorStop(0, '#150809');
-    gradient.addColorStop(.5, '#3c1714');
-    gradient.addColorStop(1, '#100708');
-    context.fillStyle = gradient;
-    context.fillRect(0, 0, size, size);
-    const random = seeded(120);
-    for (let i = 0; i < 130; i += 1) {
-      const y = random() * size;
-      context.strokeStyle = i % 4 ? '#54241c' : '#080404';
-      context.globalAlpha = .18 + random() * .32;
-      context.lineWidth = .5 + random() * 2;
-      context.beginPath();
-      context.moveTo(0, y);
-      context.bezierCurveTo(size * .28, y + random() * 18, size * .7, y - random() * 22, size, y + random() * 10);
-      context.stroke();
-    }
-    context.globalAlpha = 1;
-  }, [2, 2]);
-}
-
-function makePaper() {
-  return canvasTexture(512, (context, size) => {
-    const gradient = context.createRadialGradient(size / 2, size / 2, 30, size / 2, size / 2, size * .7);
-    gradient.addColorStop(0, '#b7a183');
-    gradient.addColorStop(.75, '#79644e');
-    gradient.addColorStop(1, '#39261f');
-    context.fillStyle = gradient;
-    context.fillRect(0, 0, size, size);
-    speckle(context, size, 2200, ['#28120f', '#e2d0ae', '#7e1518'], 990);
-    const random = seeded(220);
-    context.strokeStyle = 'rgba(33, 12, 11, .78)';
-    context.lineWidth = 2;
-    for (let line = 0; line < 12; line += 1) {
-      const y = 90 + line * 25;
-      context.beginPath();
-      context.moveTo(65, y);
-      context.bezierCurveTo(160, y - 7, 255, y + 8, 445 - random() * 50, y);
-      context.stroke();
-    }
-    context.strokeStyle = 'rgba(98, 12, 18, .9)';
-    context.lineWidth = 5;
-    context.beginPath();
-    context.arc(size / 2, 360, 56, 0, Math.PI * 2);
-    context.stroke();
-    context.beginPath();
-    for (let i = 0; i < 8; i += 1) {
-      const angle = -Math.PI / 2 + i * Math.PI / 4;
-      const radius = i % 2 ? 27 : 54;
-      const x = size / 2 + Math.cos(angle) * radius;
-      const y = 360 + Math.sin(angle) * radius;
-      if (i === 0) context.moveTo(x, y); else context.lineTo(x, y);
-    }
-    context.closePath();
-    context.stroke();
-  });
-}
-
-function drawCoverSigil(context, size, variant) {
-  context.save();
-  context.translate(size / 2, size / 2);
-  context.strokeStyle = variant === 1 ? '#69503a' : variant === 2 ? '#4c1516' : '#302824';
-  context.shadowColor = variant === 2 ? '#8d151a' : '#17110f';
-  context.shadowBlur = variant === 2 ? 11 : 4;
-  context.lineCap = 'round';
-  context.lineJoin = 'round';
-  context.lineWidth = 12;
-  context.strokeRect(-205, -220, 410, 440);
-  context.lineWidth = 7;
-  context.beginPath();
-  context.moveTo(-245, 0);
-  context.lineTo(245, 0);
-  context.moveTo(-154, -250);
-  context.lineTo(-154, 250);
-  context.stroke();
-  context.fillStyle = variant === 1 ? '#9a7650' : '#50433b';
-  for (const x of [-210, -154, 210]) {
-    for (const y of [-205, -100, 0, 100, 205]) {
-      context.beginPath();
-      context.arc(x, y, 6, 0, Math.PI * 2);
-      context.fill();
-    }
-  }
-  context.restore();
-}
-
-function makeCover(variant) {
+export function makeLeatherTexture(tone = 0) {
   const palettes = [
-    ['#161514', '#4b4540', '#080706'],
-    ['#241d16', '#72563d', '#110d09'],
-    ['#1e0c0d', '#671e20', '#090505'],
+    ['#0c0d0c', '#252724', '#050505'],
+    ['#101411', '#303830', '#070a08'],
+    ['#14100e', '#3a302a', '#080605'],
   ];
-  return canvasTexture(512, (context, size) => {
-    const gradient = context.createRadialGradient(210, 180, 15, 255, 255, 370);
-    gradient.addColorStop(0, palettes[variant][1]);
-    gradient.addColorStop(.55, palettes[variant][0]);
-    gradient.addColorStop(1, palettes[variant][2]);
-    context.fillStyle = gradient;
-    context.fillRect(0, 0, size, size);
-    const flecks = variant === 1
-      ? ['#000000', '#b08b62', '#57412e']
-      : variant === 2 ? ['#000000', '#8a3831', '#5e1115'] : ['#000000', '#8a7a6c', '#352d29'];
-    speckle(context, size, 3100, flecks, 300 + variant);
-    drawCoverSigil(context, size, variant);
-  });
-}
-
-function makeDoor() {
-  return canvasTexture(512, (context, size) => {
-    context.fillStyle = '#181211';
-    context.fillRect(0, 0, size, size);
-    context.strokeStyle = '#46332e';
-    context.lineWidth = 15;
-    context.strokeRect(18, 18, size - 36, size - 36);
-    context.lineWidth = 5;
-    context.strokeRect(50, 50, size - 100, size - 100);
-    const random = seeded(633);
-    for (let y = 0; y < 4; y += 1) {
-      for (let x = 0; x < 2; x += 1) {
-        const cx = 145 + x * 220;
-        const cy = 100 + y * 105;
-        context.strokeStyle = y === 1 ? '#68141a' : '#372925';
-        context.lineWidth = 7;
-        context.beginPath();
-        context.arc(cx, cy, 32 + random() * 18, 0, Math.PI * 2);
-        context.stroke();
-      }
+  const colors = palettes[tone % palettes.length];
+  const random = seeded(90 + tone);
+  return canvasTexture(512, 512, (ctx, width, height) => {
+    ctx.fillStyle = colors[0];
+    ctx.fillRect(0, 0, width, height);
+    for (let i = 0; i < 18000; i += 1) {
+      const x = random() * width;
+      const y = random() * height;
+      const radius = .4 + random() * 2.1;
+      ctx.beginPath();
+      ctx.arc(x, y, radius, 0, Math.PI * 2);
+      ctx.strokeStyle = random() > .46 ? colors[1] : colors[2];
+      ctx.globalAlpha = .1 + random() * .2;
+      ctx.stroke();
     }
-    speckle(context, size, 1100, ['#786059', '#000000', '#541115'], 640);
+    ctx.globalAlpha = 1;
   });
 }
 
-function configureLoadedTexture(texture) {
-  texture.colorSpace = THREE.SRGBColorSpace;
+export function makePaperTexture() {
+  const random = seeded(7);
+  const texture = canvasTexture(512, 768, (ctx, width, height) => {
+    ctx.fillStyle = '#d7d2bb';
+    ctx.fillRect(0, 0, width, height);
+    const wash = ctx.createLinearGradient(0, 0, width, 0);
+    wash.addColorStop(0, 'rgba(73,55,30,.12)');
+    wash.addColorStop(.08, 'rgba(255,255,240,.04)');
+    wash.addColorStop(.82, 'rgba(255,255,240,.06)');
+    wash.addColorStop(1, 'rgba(62,42,22,.14)');
+    ctx.fillStyle = wash;
+    ctx.fillRect(0, 0, width, height);
+    for (let i = 0; i < 6000; i += 1) {
+      ctx.fillStyle = `rgba(70,53,35,${random() * .055})`;
+      ctx.fillRect(random() * width, random() * height, 1, 1);
+    }
+    ctx.strokeStyle = 'rgba(86,77,59,.22)';
+    ctx.lineWidth = 1;
+    for (let y = 80; y < height - 44; y += 35) {
+      ctx.beginPath(); ctx.moveTo(46, y); ctx.lineTo(width - 38, y); ctx.stroke();
+    }
+  });
   texture.wrapS = texture.wrapT = THREE.ClampToEdgeWrapping;
-  texture.anisotropy = 4;
   return texture;
 }
 
-function atlasCrop(source, x, y, width, height) {
-  const texture = source.clone();
-  const imageWidth = source.image.width;
-  const imageHeight = source.image.height;
-  texture.repeat.set(width / imageWidth, height / imageHeight);
-  texture.offset.set(x / imageWidth, (imageHeight - y - height) / imageHeight);
-  texture.needsUpdate = true;
+export function makeFabricTexture(base = '#0d3f58') {
+  const texture = canvasTexture(256, 256, (ctx, width, height) => {
+    ctx.fillStyle = base;
+    ctx.fillRect(0, 0, width, height);
+    ctx.lineWidth = 1;
+    for (let i = 0; i < width; i += 4) {
+      ctx.strokeStyle = i % 8 ? 'rgba(255,255,255,.025)' : 'rgba(0,0,0,.09)';
+      ctx.beginPath(); ctx.moveTo(i, 0); ctx.lineTo(i, height); ctx.stroke();
+    }
+    for (let i = 0; i < height; i += 4) {
+      ctx.strokeStyle = i % 8 ? 'rgba(255,255,255,.02)' : 'rgba(0,0,0,.08)';
+      ctx.beginPath(); ctx.moveTo(0, i); ctx.lineTo(width, i); ctx.stroke();
+    }
+  });
+  texture.repeat.set(3, 3);
   return texture;
 }
 
-function spreadPage(source, side) {
-  const texture = source.clone();
-  texture.repeat.set(.47, .9);
-  texture.offset.set(side === 0 ? .015 : .515, .05);
-  texture.needsUpdate = true;
+export function makeScreenTexture() {
+  const texture = canvasTexture(768, 480, (ctx, width, height) => {
+    const glow = ctx.createRadialGradient(width / 2, height / 2, 0, width / 2, height / 2, width * .65);
+    glow.addColorStop(0, '#f9faf7');
+    glow.addColorStop(1, '#d7ddd7');
+    ctx.fillStyle = glow;
+    ctx.fillRect(0, 0, width, height);
+    ctx.fillStyle = '#050505';
+    ctx.font = 'italic 290px Georgia';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('L', width / 2 - 12, height / 2 - 8);
+  });
+  texture.wrapS = texture.wrapT = THREE.ClampToEdgeWrapping;
   return texture;
 }
 
-export async function createTextures() {
-  const loader = new THREE.TextureLoader();
-  const [coverAtlas, manuscript, prop, screen, entranceRelief] = await Promise.all([
-    loader.loadAsync('/assets/darkhold-cover-variants.png'),
-    loader.loadAsync('/assets/pages/spread-manuscript.jpg'),
-    loader.loadAsync('/assets/pages/spread-prop.jpg'),
-    loader.loadAsync('/assets/pages/spread-screen.jpg'),
-    loader.loadAsync('/assets/references/entrance-relief-user.png'),
-  ]);
-  [coverAtlas, manuscript, prop, screen, entranceRelief].forEach(configureLoadedTexture);
-  entranceRelief.repeat.set(.78, 1);
-  entranceRelief.offset.set(.11, 0);
-  // Crop around the six photographed covers, excluding the white collage gutters.
-  const coverTiles = [
-    atlasCrop(coverAtlas, 0, 0, 216, 357),
-    atlasCrop(coverAtlas, 236, 0, 265, 357),
-    atlasCrop(coverAtlas, 522, 0, 278, 357),
-    atlasCrop(coverAtlas, 0, 372, 216, 319),
-    atlasCrop(coverAtlas, 236, 372, 265, 319),
-    atlasCrop(coverAtlas, 522, 372, 278, 319),
-  ];
+export function makeBookSpineTexture(label, color) {
+  return canvasTexture(128, 512, (ctx, width, height) => {
+    ctx.fillStyle = color;
+    ctx.fillRect(0, 0, width, height);
+    ctx.save();
+    ctx.translate(width / 2, height / 2);
+    ctx.rotate(-Math.PI / 2);
+    ctx.fillStyle = ['#e3dfd0', '#131715'].includes(color) ? '#7b322b' : '#e8e5db';
+    ctx.font = 'bold 26px Georgia';
+    ctx.textAlign = 'center';
+    ctx.fillText(label, 0, 8);
+    ctx.restore();
+  });
+}
 
-  return {
-    stone: makeStone(),
-    floor: makeFloor(),
-    metal: makeMetal(),
-    wood: makeWood(),
-    paper: makePaper(),
-    door: makeDoor(),
-    entranceRelief,
-    covers: coverTiles,
-    coverFallbacks: [makeCover(0), makeCover(1), makeCover(2)],
-    pages: [
-      spreadPage(manuscript, 0),
-      spreadPage(manuscript, 1),
-      spreadPage(prop, 0),
-      spreadPage(prop, 1),
-      spreadPage(screen, 0),
-      spreadPage(screen, 1),
-    ],
-  };
+export function makeDeathNoteTitleTexture() {
+  return canvasTexture(1024, 720, (ctx, width, height) => {
+    ctx.clearRect(0, 0, width, height);
+    ctx.fillStyle = '#f0f0e8';
+    ctx.font = '54px "Segoe UI", sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.save();
+    ctx.translate(width * .53, height * .34);
+    ctx.rotate(-.055);
+    ctx.fillText('DEATH NOTE', 0, 0);
+    ctx.restore();
+  });
+}
+
+export function makeRulePageTexture(page = 1) {
+  const heading = page === 1 ? 'HOW TO USE IT' : `RULE ${String(page).padStart(2, '0')}`;
+  return canvasTexture(768, 1024, (ctx, width, height) => {
+    ctx.fillStyle = '#d8d3bc';
+    ctx.fillRect(0, 0, width, height);
+    const shade = ctx.createLinearGradient(0, 0, width, 0);
+    shade.addColorStop(0, 'rgba(51,37,22,.18)'); shade.addColorStop(.12, 'rgba(255,255,255,.03)'); shade.addColorStop(1, 'rgba(79,58,33,.08)');
+    ctx.fillStyle = shade; ctx.fillRect(0, 0, width, height);
+    ctx.fillStyle = '#171714';
+    ctx.textAlign = 'center';
+    ctx.font = 'bold 42px Georgia';
+    ctx.fillText(heading, width / 2, 112);
+    ctx.fillRect(88, 142, width - 176, 2);
+    ctx.font = '24px Georgia';
+    ctx.textAlign = 'left';
+    const lines = page === 1
+      ? ['The human whose name is written in', 'this note shall die.', '', 'This note will not take effect unless', 'the writer has the person’s face in', 'their mind when writing their name.']
+      : ['The rule pages will be typeset here in', 'the next milestone.', '', 'This page exists to validate the paper,', 'binding and page-turning system.'];
+    lines.forEach((line, index) => ctx.fillText(line, 86, 220 + index * 50));
+    ctx.font = '18px Georgia';
+    ctx.textAlign = 'center';
+    ctx.fillText(String(page), width / 2, height - 55);
+  });
+}
+
+export function makeNotebookPageTexture(page = 6, written = false) {
+  return canvasTexture(768, 1024, (ctx, width, height) => {
+    ctx.fillStyle = '#deded8';
+    ctx.fillRect(0, 0, width, height);
+    const shade = ctx.createLinearGradient(0, 0, width, 0);
+    shade.addColorStop(0, 'rgba(62,62,58,.13)');
+    shade.addColorStop(.12, 'rgba(255,255,255,.09)');
+    shade.addColorStop(1, 'rgba(35,35,32,.05)');
+    ctx.fillStyle = shade;
+    ctx.fillRect(0, 0, width, height);
+
+    ctx.strokeStyle = 'rgba(82,88,86,.48)';
+    ctx.lineWidth = 2;
+    for (let y = 94; y < height - 58; y += 54) {
+      ctx.beginPath();
+      ctx.moveTo(42, y);
+      ctx.lineTo(width - 36, y);
+      ctx.stroke();
+    }
+    ctx.strokeStyle = 'rgba(78,60,58,.55)';
+    ctx.beginPath();
+    ctx.moveTo(98, 42);
+    ctx.lineTo(98, height - 38);
+    ctx.stroke();
+
+    ctx.fillStyle = '#222320';
+    ctx.textAlign = 'center';
+    ctx.font = '18px Georgia';
+    ctx.fillText(String(page), width / 2, height - 28);
+
+    if (page === 6) {
+      ctx.save();
+      ctx.translate(136, 310);
+      ctx.rotate(-.055);
+      ctx.textAlign = 'left';
+      ctx.fillStyle = '#141512';
+      ctx.font = '56px "Segoe Print", "Comic Sans MS", cursive';
+      ctx.fillText('LIND L. TAILOR', 0, 0);
+      ctx.restore();
+    }
+    if (written) {
+      ctx.save();
+      ctx.translate(136, page === 6 ? 472 : 310);
+      ctx.rotate(.025);
+      ctx.textAlign = 'left';
+      ctx.fillStyle = '#11120f';
+      ctx.font = '54px "Segoe Print", "Comic Sans MS", cursive';
+      ctx.fillText('LIGHT YAGAMI', 0, 0);
+      ctx.restore();
+    }
+  });
 }

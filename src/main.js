@@ -1,293 +1,239 @@
 import * as THREE from 'three';
-import { createTextures } from './textures.js';
-import { buildTemple } from './temple.js';
-import { createDarkhold } from './book.js';
+import { RectAreaLightUniformsLib } from 'three/addons/lights/RectAreaLightUniformsLib.js';
+import { createRoom } from './room.js';
+import { createDeathNote } from './book.js';
 
 const canvas = document.querySelector('#scene');
-const hud = document.querySelector('#hud');
-const objective = document.querySelector('#objective');
-const objectiveText = document.querySelector('#objective-text');
-const progressLine = document.querySelector('#progress-line');
-const prompt = document.querySelector('#interaction-prompt');
-const promptTitle = document.querySelector('#prompt-title');
-const promptDetail = document.querySelector('#prompt-detail');
-const helpButton = document.querySelector('#help-button');
-const helpPanel = document.querySelector('#help-panel');
-const closeHelp = document.querySelector('#close-help');
-const toast = document.querySelector('#cover-toast');
+const loader = document.querySelector('#loader');
+const interfaceRoot = document.querySelector('#interface');
 const webglError = document.querySelector('#webgl-error');
-
+const bookPrompt = document.querySelector('#book-prompt');
+const chapterNumber = document.querySelector('#chapter-number');
+const chapterTitle = document.querySelector('#chapter-title');
+const chapterCopy = document.querySelector('#chapter-copy');
+const status = document.querySelector('#status');
+const helpPanel = document.querySelector('#help-panel');
+const viewCopy = {
+  room: ['01 / THE ROOM', 'A quiet place to study.', 'Look closer. The ordinary details are hiding something.'],
+  desk: ['02 / THE DESK', 'Order conceals obsession.', 'Books, apples, study notes — and one object that does not belong.'],
+  book: ['03 / THE NOTEBOOK', 'The human whose name is written…', 'Open the cover, turn the rule pages, or select the fountain pen to write.'],
+};
+const views = {
+  room: { position: new THREE.Vector3(9.2, 4.65, 7.15), target: new THREE.Vector3(-.8, 2.45, -2.15) },
+  desk: { position: new THREE.Vector3(-5.3, 3.85, -1.05), target: new THREE.Vector3(-10.35, 2.45, -4.7) },
+  book: { position: new THREE.Vector3(3.48, 3.15, 1.06), target: new THREE.Vector3(0, 1.24, 1.22) },
+};
 let renderer;
 try {
+  RectAreaLightUniformsLib.init();
   renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' });
 } catch (error) {
+  loader.hidden = true;
   webglError.hidden = false;
   throw error;
 }
-
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, /Android|iPhone|iPad/i.test(navigator.userAgent) ? 1.25 : 1.8));
 renderer.setSize(window.innerWidth, window.innerHeight);
-renderer.setPixelRatio(Math.min(window.devicePixelRatio, /Mobi|Android/i.test(navigator.userAgent) ? 1.25 : 2));
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 renderer.outputColorSpace = THREE.SRGBColorSpace;
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
-renderer.toneMappingExposure = 1.26;
-
+renderer.toneMappingExposure = 1.12;
 const scene = new THREE.Scene();
-scene.background = new THREE.Color(0x201a17);
-scene.fog = new THREE.FogExp2(0x241b18, .0085);
-
-// Perspective projection is an explicit project requirement.
-const camera = new THREE.PerspectiveCamera(58, window.innerWidth / window.innerHeight, .1, 180);
-camera.position.set(0, 9.5, 64);
-
-const textures = await createTextures();
-const temple = buildTemple(scene, textures);
-const darkhold = createDarkhold(textures);
-scene.add(darkhold.root);
-
-const state = {
-  mode: 'sealed', // sealed | entering | exploring
-  entryTime: 0,
-  elapsed: 0,
-  cameraAngle: 0,
-  cameraRadius: 18,
-  cameraHeight: 10.5,
-  targetAngle: 0,
-  targetRadius: 18,
-  targetHeight: 10.5,
-  keyInteractions: 0,
-  coverChanges: 0,
-};
-
-const keys = new Set();
+scene.background = new THREE.Color('#08100d');
+scene.fog = new THREE.FogExp2('#08100d', .011);
+const camera = new THREE.PerspectiveCamera(49, window.innerWidth / window.innerHeight, .05, 80);
+camera.position.copy(views.room.position);
+const cameraTarget = views.room.target.clone();
+const desiredPosition = camera.position.clone();
+const desiredTarget = cameraTarget.clone();
+camera.lookAt(cameraTarget);
+const room = createRoom(scene);
+const deathNote = createDeathNote(scene, room.bookPosition);
 const raycaster = new THREE.Raycaster();
-const pointer = new THREE.Vector2(0, 0);
-let hovered = null;
+const pointer = new THREE.Vector2(3, 3);
+const clock = new THREE.Clock();
+const keys = new Set();
+let activeView = 'room';
 let pointerDown = null;
-let dragged = false;
+let dragging = false;
 let toastTimer = 0;
 
-function showToast(message) {
-  toast.textContent = message;
-  toast.classList.add('show');
-  window.clearTimeout(toastTimer);
-  toastTimer = window.setTimeout(() => toast.classList.remove('show'), 1700);
+function clampToRoom(vector, target = false) {
+  const bounds = room.bounds;
+  vector.x = THREE.MathUtils.clamp(vector.x, bounds.minX, bounds.maxX);
+  vector.z = THREE.MathUtils.clamp(vector.z, bounds.minZ, bounds.maxZ);
+  vector.y = THREE.MathUtils.clamp(vector.y, target ? 1 : bounds.minY, target ? 5.85 : bounds.maxY);
 }
 
-function setHelp(open) {
-  helpPanel.classList.toggle('is-open', open);
-  helpPanel.setAttribute('aria-hidden', String(!open));
-  helpButton.setAttribute('aria-expanded', String(open));
+function setView(name) {
+  const view = views[name];
+  if (!view) return;
+  activeView = name;
+  desiredPosition.copy(view.position);
+  desiredTarget.copy(view.target);
+  const copy = viewCopy[name];
+  chapterNumber.textContent = copy[0];
+  chapterTitle.textContent = copy[1];
+  chapterCopy.textContent = copy[2];
+  status.textContent = `${name.toUpperCase()} VIEW`;
+  document.querySelectorAll('[data-view]').forEach((button) => button.classList.toggle('is-active', button.dataset.view === name));
+  bookPrompt.classList.toggle('is-hidden', name !== 'book');
+  if (name === 'book') bookPrompt.querySelector('strong').textContent = deathNote.isOpen ? 'Close the Death Note' : 'Open the Death Note';
 }
 
-helpButton.addEventListener('click', () => setHelp(!helpPanel.classList.contains('is-open')));
-closeHelp.addEventListener('click', () => setHelp(false));
-
-function enterTemple() {
-  if (state.mode !== 'sealed') return;
-  state.mode = 'entering';
-  state.entryTime = state.elapsed;
-  temple.openDoors();
+function showStatus(message) {
+  status.textContent = message.toUpperCase();
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => { status.textContent = `${activeView.toUpperCase()} VIEW`; }, 1800);
 }
 
-window.addEventListener('keydown', (event) => {
-  const key = event.key.toLowerCase();
-  if (state.mode === 'sealed' && (key === 'enter' || key === ' ')) {
-    event.preventDefault();
-    enterTemple();
-    return;
-  }
-  if (key === 'h') setHelp(!helpPanel.classList.contains('is-open'));
-  if (key === 'escape') setHelp(false);
-  if (state.mode !== 'exploring') return;
-  if (['arrowleft', 'arrowright', 'arrowup', 'arrowdown', ' '].includes(key)) event.preventDefault();
-  keys.add(key);
-  if (key === 'c' && !event.repeat) {
-    const name = darkhold.cycleCover();
-    state.coverChanges += 1;
-    showToast(`Cover texture · ${name}`);
-  }
-  if (key === 'r' && !event.repeat) {
-    state.targetAngle = 0;
-    state.targetRadius = 18;
-    state.targetHeight = 10.5;
-    showToast('Camera position reset');
-  }
-});
-window.addEventListener('keyup', (event) => keys.delete(event.key.toLowerCase()));
-window.addEventListener('blur', () => keys.clear());
+function toggleBook() {
+  if (activeView !== 'book') setView('book');
+  const opened = deathNote.toggle();
+  bookPrompt.querySelector('strong').textContent = opened ? 'Close the Death Note' : 'Open the Death Note';
+  bookPrompt.querySelector('small').textContent = opened ? 'Click the cover or press E' : 'Click the book or press E';
+  showStatus(opened ? 'Notebook opened' : 'Notebook closed');
+}
 
 function updatePointer(event) {
-  pointer.x = (event.clientX / window.innerWidth) * 2 - 1;
-  pointer.y = -(event.clientY / window.innerHeight) * 2 + 1;
+  const rect = canvas.getBoundingClientRect();
+  pointer.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+  pointer.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+}
+
+function bookHit() {
+  raycaster.setFromCamera(pointer, camera);
+  return raycaster.intersectObjects(deathNote.hitTargets, true)[0] ?? null;
 }
 
 canvas.addEventListener('pointerdown', (event) => {
   updatePointer(event);
-  pointerDown = { x: event.clientX, y: event.clientY, angle: state.targetAngle, height: state.targetHeight };
-  dragged = false;
+  pointerDown = { x: event.clientX, y: event.clientY };
+  dragging = false;
   canvas.setPointerCapture(event.pointerId);
 });
-
 canvas.addEventListener('pointermove', (event) => {
   updatePointer(event);
-  if (!pointerDown || state.mode !== 'exploring') return;
-  const dx = event.clientX - pointerDown.x;
-  const dy = event.clientY - pointerDown.y;
-  if (Math.hypot(dx, dy) > 5) dragged = true;
-  if (dragged) {
-    state.targetAngle = pointerDown.angle - dx * .0065;
-    state.targetHeight = THREE.MathUtils.clamp(pointerDown.height + dy * .018, 6, 16);
-  }
+  if (pointerDown) {
+    const dx = event.clientX - pointerDown.x;
+    const dy = event.clientY - pointerDown.y;
+    if (Math.hypot(dx, dy) > 4) dragging = true;
+    if (dragging) {
+      const offset = desiredPosition.clone().sub(desiredTarget);
+      const spherical = new THREE.Spherical().setFromVector3(offset);
+      spherical.theta -= event.movementX * .004;
+      spherical.phi = THREE.MathUtils.clamp(spherical.phi + event.movementY * .004, .1, Math.PI - .1);
+      desiredPosition.copy(desiredTarget).add(new THREE.Vector3().setFromSpherical(spherical));
+      clampToRoom(desiredPosition);
+    }
+  } else canvas.style.cursor = bookHit() ? 'pointer' : 'grab';
 });
-
 canvas.addEventListener('pointerup', (event) => {
-  if (state.mode === 'sealed' && !dragged) {
-    raycaster.setFromCamera(pointer, camera);
-    const doorHit = raycaster.intersectObjects(temple.doorInteractables, true)[0];
-    if (doorHit) enterTemple();
-  } else if (state.mode === 'exploring' && !dragged && hovered) {
-    const message = darkhold.interact(hovered.object, hovered.point);
-    showToast(message);
+  updatePointer(event);
+  if (!dragging) {
+    const hit = bookHit();
+    if (hit) {
+      if (hit.object.userData.pen) {
+        const active = deathNote.togglePen();
+        showStatus(active ? 'Fountain pen ready — click a lined page' : 'Open the notebook before using the pen');
+      } else if (deathNote.isOpen && hit.object.userData.page) {
+        if (deathNote.penActive) {
+          if (deathNote.writeToPage()) showStatus('Name written in the Death Note');
+          else showStatus('Turn to a lined notebook page first');
+        } else {
+          const pageAction = deathNote.nextPage();
+          if (pageAction === 'turning') showStatus(`Turning to pages ${deathNote.currentPage + 1}–${deathNote.currentPage + 2}`);
+          if (pageAction === 'closing') {
+            bookPrompt.querySelector('strong').textContent = 'Open the Death Note';
+            bookPrompt.querySelector('small').textContent = 'Click the book or press E';
+            showStatus('Final page reached — notebook closed');
+          }
+        }
+      } else toggleBook();
+    }
   }
   pointerDown = null;
-  dragged = false;
-  canvas.releasePointerCapture(event.pointerId);
+  dragging = false;
+  try { canvas.releasePointerCapture(event.pointerId); } catch (_) { /* pointer already released */ }
 });
-
 canvas.addEventListener('wheel', (event) => {
-  if (state.mode !== 'exploring') return;
-  state.targetRadius = THREE.MathUtils.clamp(state.targetRadius + event.deltaY * .008, 10, 20);
-}, { passive: true });
+  event.preventDefault();
+  const offset = desiredPosition.clone().sub(desiredTarget);
+  offset.multiplyScalar(event.deltaY > 0 ? 1.08 : .92);
+  offset.clampLength(activeView === 'book' ? 2.1 : 2.8, 14);
+  desiredPosition.copy(desiredTarget).add(offset);
+  clampToRoom(desiredPosition);
+}, { passive: false });
 
-function updateInput(delta) {
-  const orbitDirection = (keys.has('d') || keys.has('arrowright') ? 1 : 0) - (keys.has('a') || keys.has('arrowleft') ? 1 : 0);
-  const zoomDirection = (keys.has('s') || keys.has('arrowdown') ? 1 : 0) - (keys.has('w') || keys.has('arrowup') ? 1 : 0);
-  const heightDirection = (keys.has('e') ? 1 : 0) - (keys.has('q') ? 1 : 0);
-  state.targetAngle += orbitDirection * delta * .72;
-  state.targetRadius = THREE.MathUtils.clamp(state.targetRadius + zoomDirection * delta * 5.2, 10, 20);
-  state.targetHeight = THREE.MathUtils.clamp(state.targetHeight + heightDirection * delta * 4.2, 6, 16);
-  if (orbitDirection || zoomDirection || heightDirection) state.keyInteractions += 1;
+window.addEventListener('keydown', (event) => {
+  const key = event.key.toLowerCase();
+  keys.add(key);
+  if (event.repeat) return;
+  if (['1', '2', '3'].includes(key)) setView(['room', 'desk', 'book'][Number(key) - 1]);
+  if (key === 'e' && activeView === 'book') toggleBook();
+  if (key === 'c') showStatus(deathNote.cycleCover());
+  if (key === 'h') toggleHelp();
+  if (key === 'r') setView(activeView);
+});
+window.addEventListener('keyup', (event) => keys.delete(event.key.toLowerCase()));
+document.querySelectorAll('[data-view]').forEach((button) => button.addEventListener('click', () => setView(button.dataset.view)));
+bookPrompt.addEventListener('click', toggleBook);
 
-  const smoothing = 1 - Math.exp(-delta * 5.2);
-  state.cameraAngle += (state.targetAngle - state.cameraAngle) * smoothing;
-  state.cameraRadius += (state.targetRadius - state.cameraRadius) * smoothing;
-  state.cameraHeight += (state.targetHeight - state.cameraHeight) * smoothing;
+function toggleHelp(force) {
+  const open = typeof force === 'boolean' ? force : !helpPanel.classList.contains('is-open');
+  helpPanel.classList.toggle('is-open', open);
+  helpPanel.setAttribute('aria-hidden', String(!open));
+  document.querySelector('#help-toggle').setAttribute('aria-expanded', String(open));
 }
+document.querySelector('#help-toggle').addEventListener('click', () => toggleHelp());
+document.querySelector('#help-close').addEventListener('click', () => toggleHelp(false));
 
-function updateCamera(delta) {
-  const target = new THREE.Vector3(0, 5.2, 0);
-  if (state.mode === 'sealed') {
-    camera.position.y = 9.5 + Math.sin(state.elapsed * .35) * .035;
-    camera.lookAt(0, 9, 42.5);
-    return;
-  }
-  if (state.mode === 'entering') {
-    const raw = THREE.MathUtils.clamp((state.elapsed - state.entryTime) / 8, 0, 1);
-    const moveRaw = THREE.MathUtils.clamp((state.elapsed - state.entryTime - 1.8) / 6.2, 0, 1);
-    const eased = moveRaw * moveRaw * (3 - 2 * moveRaw);
-    const start = new THREE.Vector3(0, 9.5, 64);
-    const end = new THREE.Vector3(0, 10.5, 18);
-    camera.position.lerpVectors(start, end, eased);
-    const look = new THREE.Vector3().lerpVectors(new THREE.Vector3(0, 9, 42.5), target, eased);
-    camera.lookAt(look);
-    if (raw >= 1) {
-      state.mode = 'exploring';
-      hud.classList.remove('is-hidden');
-      objective.classList.remove('is-hidden');
-      objectiveText.textContent = 'Approach the forbidden book';
-      progressLine.style.width = '64%';
-      showToast('Temple controls are active');
-    }
-    return;
-  }
-  updateInput(delta);
-  camera.position.set(
-    Math.sin(state.cameraAngle) * state.cameraRadius,
-    state.cameraHeight,
-    -.4 + Math.cos(state.cameraAngle) * state.cameraRadius,
-  );
-  camera.lookAt(target);
-}
-
-function updateRaycast() {
-  if (state.mode === 'sealed') {
-    raycaster.setFromCamera(pointer, camera);
-    const overDoor = raycaster.intersectObjects(temple.doorInteractables, true).length > 0;
-    canvas.style.cursor = overDoor ? 'pointer' : 'default';
-    prompt.classList.add('is-hidden');
-    return;
-  }
-  if (state.mode !== 'exploring' || dragged || helpPanel.classList.contains('is-open')) {
-    hovered = null;
-    prompt.classList.add('is-hidden');
-    canvas.style.cursor = dragged ? 'grabbing' : 'grab';
-    return;
-  }
-  raycaster.setFromCamera(pointer, camera);
-  const hits = raycaster.intersectObjects(darkhold.interactables, true);
-  hovered = hits.find((hit) => hit.distance < 30) ?? null;
-  canvas.style.cursor = hovered ? 'pointer' : 'grab';
-  if (!hovered) {
-    prompt.classList.add('is-hidden');
-    return;
-  }
-  prompt.classList.remove('is-hidden');
-  if (!darkhold.isOpen) {
-    promptTitle.textContent = 'Open the Darkhold';
-    promptDetail.textContent = 'Click the sealed cover';
-  } else if (hovered.object.userData.bookPart === 'cover' || hovered.object.userData.bookPart === 'page-left') {
-    promptTitle.textContent = darkhold.turnedPages ? 'Turn back' : 'Close the Darkhold';
-    promptDetail.textContent = 'Click the left side';
-  } else {
-    promptTitle.textContent = darkhold.turnedPages < 7 ? 'Reveal the next page' : 'Close the Darkhold';
-    promptDetail.textContent = 'Click the right page';
+function updateKeyboard(delta) {
+  const forward = desiredTarget.clone().sub(desiredPosition);
+  forward.y = 0;
+  forward.normalize();
+  const right = new THREE.Vector3().crossVectors(forward, camera.up).normalize();
+  const move = new THREE.Vector3();
+  if (keys.has('w')) move.add(forward);
+  if (keys.has('s')) move.sub(forward);
+  if (keys.has('a')) move.sub(right);
+  if (keys.has('d')) move.add(right);
+  if (keys.has('q')) move.y -= 1;
+  if (keys.has('e') && activeView !== 'book') move.y += 1;
+  if (move.lengthSq() > 0) {
+    move.normalize().multiplyScalar(delta * 2.4);
+    desiredPosition.add(move);
+    desiredTarget.add(move);
+    clampToRoom(desiredPosition);
+    clampToRoom(desiredTarget, true);
   }
 }
 
-function updateObjective() {
-  if (state.mode !== 'exploring') return;
-  if (darkhold.interactionCount > 0 && state.keyInteractions === 0) {
-    objectiveText.textContent = 'Orbit the relic with A / D';
-    progressLine.style.width = '80%';
-  } else if (darkhold.interactionCount > 0 && state.keyInteractions > 0 && state.coverChanges === 0) {
-    objectiveText.textContent = 'Press C to alter the binding';
-    progressLine.style.width = '91%';
-  } else if (darkhold.interactionCount > 0 && state.keyInteractions > 0 && state.coverChanges > 0) {
-    objectiveText.textContent = 'The ritual is complete';
-    progressLine.style.width = '100%';
-  }
-}
-
-const clock = new THREE.Clock();
-function animate() {
-  requestAnimationFrame(animate);
-  const delta = Math.min(clock.getDelta(), .1);
-  state.elapsed = clock.elapsedTime;
-  updateCamera(delta);
-  temple.update(state.elapsed, delta);
-  darkhold.update(state.elapsed, delta);
-  updateRaycast();
-  updateObjective();
-  renderer.render(scene, camera);
-}
-
-window.addEventListener('resize', () => {
+function resize() {
   camera.aspect = window.innerWidth / window.innerHeight;
   camera.updateProjectionMatrix();
   renderer.setSize(window.innerWidth, window.innerHeight);
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio, /Mobi|Android/i.test(navigator.userAgent) ? 1.25 : 2));
+}
+window.addEventListener('resize', resize);
+
+function animate() {
+  const delta = Math.min(clock.getDelta(), .05);
+  const elapsed = clock.elapsedTime;
+  updateKeyboard(delta);
+  clampToRoom(desiredPosition);
+  clampToRoom(desiredTarget, true);
+  room.update(elapsed);
+  deathNote.update(delta);
+  camera.position.lerp(desiredPosition, 1 - Math.exp(-delta * 3.8));
+  cameraTarget.lerp(desiredTarget, 1 - Math.exp(-delta * 4.2));
+  camera.lookAt(cameraTarget);
+  renderer.render(scene, camera);
+  requestAnimationFrame(animate);
+}
+requestAnimationFrame(() => {
+  loader.classList.add('is-complete');
+  interfaceRoot.classList.remove('is-hidden');
+  setView('room');
 });
-
-window.__sanctum = {
-  state,
-  darkhold,
-  temple,
-  enter: enterTemple,
-  renderer,
-  scene,
-  camera,
-};
-
 animate();
