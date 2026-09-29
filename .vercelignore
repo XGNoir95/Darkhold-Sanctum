@@ -1,0 +1,9 @@
+tests/
+docs/
+reports/
+.vscode/
+dist/
+node_modules/
+.git/
+.vite/
+*.log

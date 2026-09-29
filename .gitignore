@@ -3,3 +3,15 @@ dist/
 .vite/
 *.log
 .vscode/
+.vercel/
+
+# Generated test output
+tests/*.png
+test-results/
+playwright-report/
+coverage/
+
+# Operating-system files
+.DS_Store
+Thumbs.db
+Desktop.ini

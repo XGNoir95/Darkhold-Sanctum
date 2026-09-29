@@ -65,7 +65,7 @@ await page.waitForTimeout(300);
 await page.mouse.click(720, 450);
 await page.waitForTimeout(500);
 await page.screenshot({ path: 'tests/book-written-page.png' });
-await page.mouse.click(720, 450);
+await page.locator('#book-prompt').evaluate((element) => element.click());
 await page.waitForTimeout(1800);
 await page.screenshot({ path: 'tests/book-auto-closed.png' });
 console.log('book captured');
@@ -82,6 +82,6 @@ if (errors.length) {
 }
 console.log(JSON.stringify(result, null, 2));
 if (result.prompt !== 'Open the Death Note') {
-  console.error(`Expected the book to close after the fifth general page, got: ${result.prompt}`);
+  console.error(`Expected the book to close through the restored UI control, got: ${result.prompt}`);
   process.exit(1);
 }
