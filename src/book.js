@@ -1,9 +1,9 @@
 import * as THREE from 'three';
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
-import { makeLeatherTexture, makeNotebookPageTexture, makePaperTexture } from './textures.js';
+import { makeDeathNoteTitleTexture, makeLeatherTexture, makeNotebookPageTexture, makePageBackTexture, makePaperTexture, makeRulePageTexture } from './textures.js';
 
 const ease = (value) => value < .5 ? 4 * value * value * value : 1 - Math.pow(-2 * value + 2, 3) / 2;
-const PAGE_COUNT = 11;
+const PAGE_COUNT = 12;
 
 function box(parent, size, position, material, radius = 0) {
   const geometry = radius
@@ -36,29 +36,41 @@ export function createDeathNote(scene, position) {
   const depth = 1.22;
   const leatherTextures = [0, 1, 2].map(makeLeatherTexture);
   const pageTextureCache = new Map();
-  const textureLoader = new THREE.TextureLoader();
+
   const getPageTexture = (page, written = false) => {
     const pageNumber = THREE.MathUtils.clamp(page, 1, PAGE_COUNT);
     const key = `${pageNumber}:${written ? 'written' : 'clean'}`;
     if (pageTextureCache.has(key)) return pageTextureCache.get(key);
     let texture;
     if (pageNumber <= 5) {
-      texture = textureLoader.load(`/references/death-note-rule-${pageNumber}.png`);
-      texture.colorSpace = THREE.SRGBColorSpace;
-      texture.wrapS = texture.wrapT = THREE.ClampToEdgeWrapping;
-      texture.minFilter = THREE.LinearMipmapLinearFilter;
-    } else if (pageNumber === 6 && !written) {
-      texture = textureLoader.load('/references/death-note-notebook-reference.png');
-      texture.colorSpace = THREE.SRGBColorSpace;
-      texture.wrapS = texture.wrapT = THREE.ClampToEdgeWrapping;
-      texture.minFilter = THREE.LinearMipmapLinearFilter;
-    } else texture = makeNotebookPageTexture(pageNumber, written);
+      texture = makeRulePageTexture(pageNumber);
+    } else {
+      texture = makeNotebookPageTexture(pageNumber, written);
+    }
     pageTextureCache.set(key, texture);
     return texture;
   };
+
+  const getBackPageTexture = (page) => {
+    const key = `back:${page}`;
+    if (pageTextureCache.has(key)) return pageTextureCache.get(key);
+    const texture = makePageBackTexture(page);
+    pageTextureCache.set(key, texture);
+    return texture;
+  };
+
+  // Pre-cache all page textures for instant, zero-stutter page turning
+  for (let p = 1; p <= PAGE_COUNT; p++) {
+    getPageTexture(p, false);
+    if (p >= 6) getPageTexture(p, true);
+    getBackPageTexture(p);
+  }
+
   const exactCoverTexture = new THREE.TextureLoader().load('/references/death-note-cover-exact.png');
   exactCoverTexture.colorSpace = THREE.SRGBColorSpace;
   exactCoverTexture.wrapS = exactCoverTexture.wrapT = THREE.ClampToEdgeWrapping;
+  exactCoverTexture.anisotropy = 16;
+  exactCoverTexture.minFilter = THREE.LinearMipmapLinearFilter;
   const coverMaterial = new THREE.MeshPhysicalMaterial({
     color: '#222420', map: leatherTextures[0], roughness: .72, metalness: .04, clearcoat: .08, clearcoatRoughness: .8,
   });
@@ -93,9 +105,10 @@ export function createDeathNote(scene, position) {
   topCover.castShadow = topCover.receiveShadow = true;
   topPivot.add(topCover);
 
+  const titleMaterial = new THREE.MeshBasicMaterial({ map: exactCoverTexture, toneMapped: false });
   const title = new THREE.Mesh(
     new THREE.PlaneGeometry(width * .96, depth * .96),
-    new THREE.MeshBasicMaterial({ map: exactCoverTexture, toneMapped: false }),
+    titleMaterial,
   );
   title.rotation.x = -Math.PI / 2;
   title.position.set(width / 2 + .018, .029, 0);
@@ -107,44 +120,48 @@ export function createDeathNote(scene, position) {
   topPivot.add(insideCover);
 
   const pageGeometry = new THREE.PlaneGeometry(width - .12, depth - .13);
+  const turningPageGeometry = new THREE.PlaneGeometry(width - .12, depth - .13, 24, 2);
+
   const leftPage = new THREE.Mesh(
     pageGeometry,
-    new THREE.MeshStandardMaterial({ map: getPageTexture(1), roughness: .96, side: THREE.DoubleSide }),
+    new THREE.MeshStandardMaterial({ map: getBackPageTexture(1), roughness: .94, side: THREE.DoubleSide }),
   );
   leftPage.rotation.x = -Math.PI / 2;
-  leftPage.position.set(-width + .026, .196, 0);
+  leftPage.position.set(-width + .026, .1915, 0);
   leftPage.receiveShadow = true;
   leftPage.userData.page = true;
   group.add(leftPage);
 
   const rightPage = new THREE.Mesh(
     pageGeometry,
-    new THREE.MeshStandardMaterial({ map: getPageTexture(1), roughness: .96, side: THREE.DoubleSide }),
+    new THREE.MeshStandardMaterial({ map: getPageTexture(1), roughness: .94, side: THREE.DoubleSide }),
   );
   rightPage.rotation.x = -Math.PI / 2;
-  rightPage.position.set(.026, .159, 0);
+  rightPage.position.set(.026, .164, 0);
   rightPage.receiveShadow = true;
   rightPage.userData.page = true;
   group.add(rightPage);
 
   const pagePivot = new THREE.Group();
-  pagePivot.position.set(-width / 2 + .04, .164, 0);
+  pagePivot.position.set(-width / 2 + .03, .165, 0);
   group.add(pagePivot);
+
   const turningPage = new THREE.Mesh(
-    pageGeometry,
-    new THREE.MeshStandardMaterial({ map: getPageTexture(1), roughness: .96, side: THREE.FrontSide }),
+    turningPageGeometry,
+    new THREE.MeshStandardMaterial({ map: getPageTexture(1), roughness: .94, side: THREE.FrontSide }),
   );
   turningPage.rotation.x = -Math.PI / 2;
-  turningPage.position.x = (width - .12) / 2;
+  turningPage.position.set((width - .12) / 2, 0.001, 0);
   turningPage.castShadow = true;
   turningPage.userData.page = true;
   pagePivot.add(turningPage);
+
   const turningPageBack = new THREE.Mesh(
-    pageGeometry,
-    new THREE.MeshStandardMaterial({ map: getPageTexture(1), roughness: .96, side: THREE.BackSide }),
+    turningPageGeometry,
+    new THREE.MeshStandardMaterial({ map: getBackPageTexture(1), roughness: .94, side: THREE.BackSide }),
   );
   turningPageBack.rotation.x = -Math.PI / 2;
-  turningPageBack.position.x = (width - .12) / 2;
+  turningPageBack.position.set((width - .12) / 2, -0.001, 0);
   turningPageBack.userData.page = true;
   pagePivot.add(turningPageBack);
 
@@ -189,6 +206,10 @@ export function createDeathNote(scene, position) {
     mesh.material.map = getPageTexture(page, writtenPages.has(page));
     mesh.material.needsUpdate = true;
   };
+  const setPageMapBack = (mesh, page) => {
+    mesh.material.map = getBackPageTexture(page);
+    mesh.material.needsUpdate = true;
+  };
 
   const api = {
     group,
@@ -225,11 +246,10 @@ export function createDeathNote(scene, position) {
         resetAfterClose = true;
         return 'closing';
       }
-      // A physical sheet has the current right page on its front and the next
-      // numbered page on its back. The page beneath it is the following page.
+      const nextPageNum = currentPage + 1;
       setPageMap(turningPage, currentPage);
-      setPageMap(turningPageBack, currentPage + 1);
-      setPageMap(rightPage, Math.min(currentPage + 2, PAGE_COUNT));
+      setPageMapBack(turningPageBack, currentPage);
+      setPageMap(rightPage, nextPageNum);
       pageTurning = true;
       pageAmount = 0;
       return 'turning';
@@ -237,7 +257,16 @@ export function createDeathNote(scene, position) {
     cycleCover() {
       coverIndex = (coverIndex + 1) % leatherTextures.length;
       coverMaterial.map = leatherTextures[coverIndex];
+      // Distinct cover tints: original black, forest green, warm umber
+      const coverColors = ['#222420', '#1a3824', '#3a2418'];
+      const titleTints  = ['#ffffff', '#c8e8cc', '#ecd8c4'];
+      const edgeColors  = ['#080907', '#0a140c', '#16100a'];
+      coverMaterial.color.set(coverColors[coverIndex]);
       coverMaterial.needsUpdate = true;
+      titleMaterial.color.set(titleTints[coverIndex]);
+      titleMaterial.needsUpdate = true;
+      edgeMaterial.color.set(edgeColors[coverIndex]);
+      edgeMaterial.needsUpdate = true;
       return ['Original black leather', 'Green-black leather', 'Umber-black leather'][coverIndex];
     },
     update(delta) {
@@ -256,25 +285,44 @@ export function createDeathNote(scene, position) {
       fountainPen.position.y += ((penActive ? .12 : .04) - fountainPen.position.y) * Math.min(1, delta * 8);
       fountainPen.rotation.z = penActive ? -.08 : 0;
       if (pageTurning) {
-        pageAmount += delta * 1.45;
+        pageAmount += delta * 1.15;
         const progress = Math.min(1, pageAmount);
+        const curl = Math.sin(progress * Math.PI);
         pagePivot.rotation.z = ease(progress) * Math.PI;
-        pagePivot.position.y = .164 + Math.sin(progress * Math.PI) * .065 + progress * .032;
+        pagePivot.position.y = .165 + progress * .0265 + curl * .055;
+
+        // Dynamic page flex / paper curvature
+        const pos = turningPageGeometry.attributes.position;
+        for (let i = 0; i < pos.count; i++) {
+          const u = (i % 25) / 24; // 0 at hinge, 1 at outer edge
+          // Page arches upward and curls gently at the edge as it turns through the air
+          const arch = curl * Math.sin(u * Math.PI * 0.85) * 0.035;
+          pos.setZ(i, arch);
+        }
+        pos.needsUpdate = true;
+        turningPageGeometry.computeVertexNormals();
+
         if (progress >= 1) {
-          currentPage = Math.min(currentPage + 2, PAGE_COUNT);
-          setPageMap(leftPage, currentPage - 1);
+          // Reset page curvature when flat
+          const pos = turningPageGeometry.attributes.position;
+          for (let i = 0; i < pos.count; i++) pos.setZ(i, 0);
+          pos.needsUpdate = true;
+          turningPageGeometry.computeVertexNormals();
+
+          currentPage += 1;
+          setPageMapBack(leftPage, currentPage - 1);
           setPageMap(rightPage, currentPage);
           pagePivot.rotation.z = 0;
-          pagePivot.position.y = .164;
+          pagePivot.position.y = .165;
           pageTurning = false;
         }
       }
       if (resetAfterClose && openAmount < .025) {
         currentPage = 1;
-        setPageMap(leftPage, 1);
+        setPageMapBack(leftPage, 1);
         setPageMap(rightPage, 1);
         setPageMap(turningPage, 1);
-        setPageMap(turningPageBack, 2);
+        setPageMap(turningPageBack, 1);
         resetAfterClose = false;
       }
     },

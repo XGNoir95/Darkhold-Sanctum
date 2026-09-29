@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { RectAreaLightUniformsLib } from 'three/addons/lights/RectAreaLightUniformsLib.js';
 import { createRoom } from './room.js';
 import { createDeathNote } from './book.js';
+import { addShinigami } from './shinigami.js';
 
 const canvas = document.querySelector('#scene');
 const loader = document.querySelector('#loader');
@@ -17,11 +18,13 @@ const viewCopy = {
   room: ['01 / THE ROOM', 'A quiet place to study.', 'Look closer. The ordinary details are hiding something.'],
   desk: ['02 / THE DESK', 'Order conceals obsession.', 'Books, apples, study notes — and one object that does not belong.'],
   book: ['03 / THE NOTEBOOK', 'The human whose name is written…', 'Open the cover, turn the rule pages, or select the fountain pen to write.'],
+  shinigami: ['04 / THE SHINIGAMI', 'Gods of death stand watch.', 'Ryuk and Rem flank the Death Note — a bitten apple rests beside it.'],
 };
 const views = {
   room: { position: new THREE.Vector3(9.2, 4.65, 7.15), target: new THREE.Vector3(-.8, 2.45, -2.15) },
   desk: { position: new THREE.Vector3(-5.3, 3.85, -1.05), target: new THREE.Vector3(-10.35, 2.45, -4.7) },
   book: { position: new THREE.Vector3(3.48, 3.15, 1.06), target: new THREE.Vector3(0, 1.24, 1.22) },
+  shinigami: { position: new THREE.Vector3(5.5, 4.2, 6.0), target: new THREE.Vector3(0, 2.5, 0.2) },
 };
 let renderer;
 try {
@@ -50,6 +53,13 @@ const desiredTarget = cameraTarget.clone();
 camera.lookAt(cameraTarget);
 const room = createRoom(scene);
 const deathNote = createDeathNote(scene, room.bookPosition);
+const shinigami = addShinigami(scene, {
+  ryukPosition: new THREE.Vector3(-3.6, 0, -0.2),
+  remPosition: new THREE.Vector3(3.6, 0, -0.2),
+  ryukRotationY: Math.PI * 0.28,
+  remRotationY: -Math.PI * 0.28,
+  scale: 2.6,
+});
 const raycaster = new THREE.Raycaster();
 const pointer = new THREE.Vector2(3, 3);
 const clock = new THREE.Clock();
@@ -139,11 +149,11 @@ canvas.addEventListener('pointerup', (event) => {
         showStatus(active ? 'Fountain pen ready — click a lined page' : 'Open the notebook before using the pen');
       } else if (deathNote.isOpen && hit.object.userData.page) {
         if (deathNote.penActive) {
-          if (deathNote.writeToPage()) showStatus('Name written in the Death Note');
-          else showStatus('Turn to a lined notebook page first');
+          if (deathNote.writeToPage()) showStatus('Inscribed: RAYE PENBER (Cardiac arrest) & NAOMI MISORA');
+          else showStatus('Turn to a lined notebook page first (page 6+)');
         } else {
           const pageAction = deathNote.nextPage();
-          if (pageAction === 'turning') showStatus(`Turning to pages ${deathNote.currentPage + 1}–${deathNote.currentPage + 2}`);
+          if (pageAction === 'turning') showStatus(`Turning to Page ${deathNote.currentPage + 1}`);
           if (pageAction === 'closing') {
             bookPrompt.querySelector('strong').textContent = 'Open the Death Note';
             bookPrompt.querySelector('small').textContent = 'Click the book or press E';
@@ -170,9 +180,9 @@ window.addEventListener('keydown', (event) => {
   const key = event.key.toLowerCase();
   keys.add(key);
   if (event.repeat) return;
-  if (['1', '2', '3'].includes(key)) setView(['room', 'desk', 'book'][Number(key) - 1]);
+  if (['1', '2', '3', '4'].includes(key)) setView(['room', 'desk', 'book', 'shinigami'][Number(key) - 1]);
   if (key === 'e' && activeView === 'book') toggleBook();
-  if (key === 'c') showStatus(deathNote.cycleCover());
+  if (key === 'c' || key === 't') showStatus(deathNote.cycleCover());
   if (key === 'h') toggleHelp();
   if (key === 'r') setView(activeView);
 });
@@ -190,6 +200,37 @@ document.querySelector('#help-toggle').addEventListener('click', () => toggleHel
 document.querySelector('#help-close').addEventListener('click', () => toggleHelp(false));
 
 function updateKeyboard(delta) {
+  // Rotate / move camera around the book using keyboard (Arrow keys or A/D/W/S in book view)
+  if (activeView === 'book' || keys.has('arrowleft') || keys.has('arrowright') || keys.has('arrowup') || keys.has('arrowdown')) {
+    const offset = desiredPosition.clone().sub(desiredTarget);
+    const spherical = new THREE.Spherical().setFromVector3(offset);
+    let orbitChanged = false;
+
+    if (keys.has('arrowleft') || (activeView === 'book' && keys.has('a'))) {
+      spherical.theta += delta * 1.8;
+      orbitChanged = true;
+    }
+    if (keys.has('arrowright') || (activeView === 'book' && keys.has('d'))) {
+      spherical.theta -= delta * 1.8;
+      orbitChanged = true;
+    }
+    if (keys.has('arrowup') || (activeView === 'book' && keys.has('w'))) {
+      spherical.phi = THREE.MathUtils.clamp(spherical.phi - delta * 1.2, 0.25, Math.PI / 2 - 0.05);
+      orbitChanged = true;
+    }
+    if (keys.has('arrowdown') || (activeView === 'book' && keys.has('s'))) {
+      spherical.phi = THREE.MathUtils.clamp(spherical.phi + delta * 1.2, 0.25, Math.PI / 2 - 0.05);
+      orbitChanged = true;
+    }
+
+    if (orbitChanged) {
+      desiredPosition.copy(desiredTarget).add(new THREE.Vector3().setFromSpherical(spherical));
+      clampToRoom(desiredPosition);
+      return;
+    }
+  }
+
+  // Room navigation
   const forward = desiredTarget.clone().sub(desiredPosition);
   forward.y = 0;
   forward.normalize();
@@ -225,6 +266,7 @@ function animate() {
   clampToRoom(desiredTarget, true);
   room.update(elapsed);
   deathNote.update(delta);
+  shinigami.update(elapsed);
   camera.position.lerp(desiredPosition, 1 - Math.exp(-delta * 3.8));
   cameraTarget.lerp(desiredTarget, 1 - Math.exp(-delta * 4.2));
   camera.lookAt(cameraTarget);

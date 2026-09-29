@@ -415,9 +415,9 @@ function createWestWall(scene, screenTexture) {
   scene.add(readingArea);
   // Keep the reading table in the open floor area directly south of the bed.
   const tableCenter = new THREE.Vector3(0, 0, 1.22);
-  const tableWood = standard('#8a5d39', .67);
+  const tableWood = standard('#996b42', .65, .04, makeWoodTexture());
   cylinder(readingArea, 1.42, .17, [tableCenter.x, 1.08, tableCenter.z], tableWood, 48);
-  const tableEdge = new THREE.Mesh(new THREE.TorusGeometry(1.37, .045, 10, 48), standard('#704a30', .66));
+  const tableEdge = new THREE.Mesh(new THREE.TorusGeometry(1.37, .045, 10, 48), standard('#704a30', .66, .04, makeWoodTexture()));
   tableEdge.rotation.x = Math.PI / 2;
   tableEdge.position.set(tableCenter.x, 1.08, tableCenter.z);
   readingArea.add(tableEdge);
@@ -571,15 +571,171 @@ export function createRoom(scene) {
   roomFill.castShadow = true;
   roomFill.shadow.mapSize.set(1024, 1024);
   scene.add(roomFill);
-  const bookOrbitLight = new THREE.PointLight('#9bd7a5', 3.2, 3.8, 1.8);
+  const bookOrbitLight = new THREE.PointLight('#b8ecc4', 4.5, 5.5, 1.6);
   scene.add(bookOrbitLight);
+
+  // Half-bitten apple beside the Death Note
+  function createBittenApple() {
+    const group = new THREE.Group();
+    group.name = 'Bitten apple';
+
+    const radius = 0.135;
+    const geo = new THREE.SphereGeometry(radius, 48, 36);
+    const pos = geo.attributes.position;
+    const colors = new Float32Array(pos.count * 3);
+
+    // Bite center and cavity radius
+    const biteCenter = new THREE.Vector3(0.10, 0.01, 0.06);
+    const biteRadius = 0.082;
+    const biteNormal = biteCenter.clone().normalize();
+
+    const skinRed = new THREE.Color('#b8141f');
+    const skinDark = new THREE.Color('#740b12');
+    const skinGold = new THREE.Color('#d49b28');
+    const fleshColor = new THREE.Color('#fcf6e8');
+    const fleshEdge = new THREE.Color('#e0dfb2');
+    const coreColor = new THREE.Color('#eae2c8');
+
+    const v = new THREE.Vector3();
+    const c = new THREE.Color();
+
+    for (let i = 0; i < pos.count; i++) {
+      v.fromBufferAttribute(pos, i);
+
+      // Organic apple shaping (taper, lobes, dimples)
+      const phi = Math.atan2(v.z, v.x);
+      const ny = v.y / radius;
+
+      // 5 subtle lobes
+      const lobe = 1 + 0.032 * Math.cos(5 * phi);
+      v.x *= lobe;
+      v.z *= lobe;
+
+      // Shoulder wider at top, gently tapered at bottom
+      if (v.y > 0) {
+        v.x *= 1.04;
+        v.z *= 1.04;
+      } else {
+        v.x *= 0.94 + 0.06 * (1 + ny);
+        v.z *= 0.94 + 0.06 * (1 + ny);
+      }
+
+      // Stem cavity (top dimple)
+      if (ny > 0.65) {
+        const dipT = (ny - 0.65) / 0.35;
+        v.y -= dipT * dipT * 0.038;
+        v.x *= 1 - dipT * 0.25;
+        v.z *= 1 - dipT * 0.25;
+      }
+
+      // Calyx cavity (bottom dimple)
+      if (ny < -0.7) {
+        const dipB = (-ny - 0.7) / 0.3;
+        v.y += dipB * dipB * 0.025;
+        v.x *= 1 - dipB * 0.2;
+        v.z *= 1 - dipB * 0.2;
+      }
+
+      // Sculpt concave bite mark
+      const distToBite = v.distanceTo(biteCenter);
+      if (distToBite < biteRadius) {
+        const t = 1 - distToBite / biteRadius;
+        const biteDepth = Math.pow(t, 1.3) * 0.068;
+        const toothRipple = Math.sin(v.y * 65) * 0.0025 + Math.sin(phi * 18) * 0.0018;
+        v.addScaledVector(biteNormal, -(biteDepth + toothRipple * t));
+
+        if (t > 0.25) {
+          if (t > 0.75) c.copy(coreColor);
+          else c.copy(fleshColor);
+        } else {
+          c.copy(fleshEdge).lerp(fleshColor, t / 0.25);
+        }
+      } else {
+        const heightGrad = (v.y / radius + 1) * 0.5;
+        if (heightGrad > 0.88) {
+          c.copy(skinRed).lerp(skinGold, (heightGrad - 0.88) / 0.12);
+        } else if (heightGrad < 0.15) {
+          c.copy(skinRed).lerp(skinDark, (0.15 - heightGrad) / 0.15);
+        } else {
+          const streak = Math.sin(phi * 12 + v.y * 20) * 0.08;
+          c.copy(skinRed);
+          if (streak > 0) c.lerp(skinDark, streak);
+        }
+      }
+
+      pos.setXYZ(i, v.x, v.y, v.z);
+      colors[i * 3] = c.r;
+      colors[i * 3 + 1] = c.g;
+      colors[i * 3 + 2] = c.b;
+    }
+
+    geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+    geo.computeVertexNormals();
+
+    const appleMat = new THREE.MeshPhysicalMaterial({
+      vertexColors: true,
+      roughness: 0.28,
+      metalness: 0.02,
+      clearcoat: 0.7,
+      clearcoatRoughness: 0.18,
+    });
+
+    const appleMesh = new THREE.Mesh(geo, appleMat);
+    appleMesh.position.set(0, 0.128, 0);
+    appleMesh.rotation.set(0.06, 0.52, -0.05); // Tilt to face bite towards viewer
+    appleMesh.castShadow = true;
+    appleMesh.receiveShadow = true;
+    group.add(appleMesh);
+
+    // Apple seed inside the bite pocket
+    const seedGeo = new THREE.ConeGeometry(0.007, 0.022, 6);
+    seedGeo.scale(1, 1, 0.5);
+    const seedMat = standard('#241108', 0.35, 0.05);
+    const seed = new THREE.Mesh(seedGeo, seedMat);
+    seed.position.set(0.062, 0.13, 0.038);
+    seed.rotation.set(0.4, 0.3, 1.2);
+    group.add(seed);
+
+    // Curved woody stem
+    const stemCurve = new THREE.CatmullRomCurve3([
+      new THREE.Vector3(0, 0.225, 0),
+      new THREE.Vector3(0.008, 0.26, 0.004),
+      new THREE.Vector3(0.022, 0.29, 0.015),
+    ]);
+    const stemGeo = new THREE.TubeGeometry(stemCurve, 10, 0.0065, 8, false);
+    const stemMat = standard('#3b2413', 0.85);
+    const stem = new THREE.Mesh(stemGeo, stemMat);
+    stem.castShadow = true;
+    group.add(stem);
+
+    // Fresh green leaf
+    const leaf = new THREE.Mesh(new THREE.SphereGeometry(0.038, 12, 8), standard('#3e7828', 0.45));
+    leaf.scale.set(1.6, 0.15, 0.7);
+    leaf.position.set(0.024, 0.262, 0.012);
+    leaf.rotation.set(0.28, 0.75, -0.38);
+    leaf.castShadow = true;
+    group.add(leaf);
+
+    return group;
+  }
+
+  const bittenApple = createBittenApple();
+  bittenApple.position.set(0.72, 1.18, 0.52);
+  scene.add(bittenApple);
 
   return {
     bounds: { minX: -11.25, maxX: 11.25, minY: .72, maxY: 6.55, minZ: -8.25, maxZ: 8.25 },
     bookPosition: new THREE.Vector3(0, 1.18, 1.22),
     update(time) {
       alcoveMaterial.uniforms.uTime.value = time;
-      bookOrbitLight.position.set(-7.38 + Math.cos(time * .5) * .72, 2.25, 1.08 + Math.sin(time * .5) * .62);
+      // Light position rotates dynamically around the book
+      const orbitSpeed = 0.85;
+      const orbitRadius = 1.45;
+      bookOrbitLight.position.set(
+        Math.cos(time * orbitSpeed) * orbitRadius,
+        1.85 + Math.sin(time * 0.6) * 0.28,
+        1.22 + Math.sin(time * orbitSpeed) * orbitRadius
+      );
     },
   };
 }
