@@ -415,9 +415,24 @@ function createWestWall(scene, screenTexture) {
   scene.add(readingArea);
   // Keep the reading table in the open floor area directly south of the bed.
   const tableCenter = new THREE.Vector3(0, 0, 1.22);
-  const tableWood = standard('#996b42', .65, .04, makeWoodTexture());
-  cylinder(readingArea, 1.42, .17, [tableCenter.x, 1.08, tableCenter.z], tableWood, 48);
-  const tableEdge = new THREE.Mesh(new THREE.TorusGeometry(1.37, .045, 10, 48), standard('#704a30', .66, .04, makeWoodTexture()));
+  const tableTexture = new THREE.TextureLoader().load('/references/reading-table-wood.png');
+  tableTexture.colorSpace = THREE.SRGBColorSpace;
+  tableTexture.anisotropy = 16;
+  tableTexture.minFilter = THREE.LinearMipmapLinearFilter;
+  tableTexture.center.set(.5, .5);
+  tableTexture.rotation = Math.PI / 2;
+  // The orbiting book light is intentionally strong, so a warm neutral multiplier
+  // keeps the supplied photograph from washing out while preserving its grain.
+  const tableTopMaterial = standard('#a65f35', .9, 0, tableTexture);
+  const tableSideMaterial = standard('#613518', .7, .035, makeWoodTexture());
+  const tableTop = new THREE.Mesh(
+    new THREE.CylinderGeometry(1.42, 1.42, .17, 64),
+    [tableSideMaterial, tableTopMaterial, tableSideMaterial],
+  );
+  tableTop.position.set(tableCenter.x, 1.08, tableCenter.z);
+  tableTop.castShadow = tableTop.receiveShadow = true;
+  readingArea.add(tableTop);
+  const tableEdge = new THREE.Mesh(new THREE.TorusGeometry(1.37, .045, 10, 64), standard('#613518', .66, .04, makeWoodTexture()));
   tableEdge.rotation.x = Math.PI / 2;
   tableEdge.position.set(tableCenter.x, 1.08, tableCenter.z);
   readingArea.add(tableEdge);
